@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChainScore — On-Chain Trading Signals</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:         #020408;
+    --bg2:        #060d14;
+    --bg3:        #0a1520;
+    --avax:       #E84142;
+    --avax-dim:   #8a2727;
+    --green:      #00ff88;
+    --green-dim:  #00663a;
+    --yellow:     #ffd700;
+    --cyan:       #00d4ff;
+    --cyan-dim:   #004455;
+    --text:       #c8d8e8;
+    --text-dim:   #4a6070;
+    --border:     #0f2030;
+    --border-hi:  #1a3a50;
+    --glow-red:   0 0 20px rgba(232,65,66,0.4);
+    --glow-green: 0 0 20px rgba(0,255,136,0.3);
+    --glow-cyan:  0 0 20px rgba(0,212,255,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--avax), transparent);
+    animation: scanH 4s linear infinite;
+  }
+
+  @keyframes scanH {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .logo-text {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: 2px;
+    text-shadow: var(--glow-red);
+  }
+
+  .logo-text span {
+    color: var(--avax);
+  }
+
+  .logo-tag {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .market-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--border-hi);
+    background: var(--bg2);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .market-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: var(--glow-green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .market-dot.closed { background: var(--avax); box-shadow: var(--glow-red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* ── CONNECT WALLET BUTTON ── */
+  .btn-connect {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid var(--avax);
+    color: var(--avax);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+
+  .btn-connect::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--avax);
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+    z-index: -1;
+  }
+
+  .btn-connect:hover { color: #fff; box-shadow: var(--glow-red); }
+  .btn-connect:hover::before { transform: translateX(0); }
+  .btn-connect.connected { border-color: var(--green); color: var(--green); }
+  .btn-connect.connected:hover { color: #fff; background: var(--green); box-shadow: var(--glow-green); }
+
+  /* ── HERO STATS ── */
+  .hero {
+    padding: 48px 0 32px;
+    text-align: center;
+  }
+
+  .hero-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(14px, 2vw, 18px);
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .hero-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 40px;
+  }
+
+  .hero-sub span { color: var(--cyan); }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .stat-box {
+    background: var(--bg2);
+    padding: 24px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.2s;
+  }
+
+  .stat-box:hover { background: var(--bg3); }
+
+  .stat-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--avax);
+    transform: scaleX(0);
+    transition: transform 0.3s;
+  }
+
+  .stat-box:hover::before { transform: scaleX(1); }
+
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  .stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .stat-value.green { color: var(--green); text-shadow: var(--glow-green); }
+  .stat-value.red   { color: var(--avax);  text-shadow: var(--glow-red);   }
+  .stat-value.cyan  { color: var(--cyan);  text-shadow: var(--glow-cyan);  }
+
+  .stat-unit {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* ── SECTION HEADER ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+
+  .section-meta {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  /* ── SIGNAL CARDS ── */
+  .signals-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 48px;
+  }
+
+  .signal-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: 40px 120px 1fr auto auto;
+    align-items: center;
+    gap: 20px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+  }
+
+  .signal-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--green);
+    box-shadow: var(--glow-green);
+  }
+
+  .signal-card:hover {
+    background: var(--bg3);
+    border-color: var(--border-hi);
+    transform: translateX(4px);
+  }
+
+  .signal-card.locked::before { background: var(--text-dim); box-shadow: none; }
+  .signal-card.locked { opacity: 0.5; cursor: not-allowed; }
+
+  .signal-rank {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--text-dim);
+    text-align: center;
+  }
+
+  .signal-rank.top { color: var(--yellow); text-shadow: 0 0 15px rgba(255,215,0,0.5); }
+
+  .signal-ticker {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 1px;
+  }
+
+  .signal-ticker .price {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 300;
+    color: var(--text-dim);
+    margin-top: 3px;
+    letter-spacing: 0;
+  }
+
+  .signal-details { min-width: 0; }
+
+  .signal-pattern {
+    font-size: 13px;
+    color: var(--cyan);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .signal-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border: 1px solid;
+  }
+
+  .tag.uptrend  { border-color: var(--green-dim); color: var(--green); }
+  .tag.downtrend{ border-color: var(--avax-dim);  color: var(--avax);  }
+  .tag.mixed    { border-color: #333;             color: var(--text-dim); }
+  .tag.volume   { border-color: var(--cyan-dim);  color: var(--cyan);  }
+
+  .signal-score {
+    text-align: right;
+  }
+
+  .score-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--green);
+    text-shadow: var(--glow-green);
+  }
+
+  .score-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .score-bar-wrap {
+    width: 80px;
+  }
+
+  .score-bar {
+    height: 3px;
+    background: var(--border);
+    margin-top: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green-dim), var(--green));
+    box-shadow: var(--glow-green);
+    transition: width 1s ease;
+  }
+
+  /* Lock overlay for non-subscribers */
+  .lock-msg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* ── ACCURACY SECTION ── */
+  .accuracy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .accuracy-panel {
+    background: var(--bg2);
+    padding: 32px;
+  }
+
+  .acc-title {
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .acc-big {
+    font-family: 'Orbitron', monospace;
+    font-size: 52px;
+    font-weight: 900;
+    color: var(--green);
+    text-shadow: var(--glow-green);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .acc-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .acc-sub span { color: var(--text); }
+
+  /* Progress ring */
+  .ring-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .ring {
+    transform: rotate(-90deg);
+  }
+
+  .ring-bg   { fill: none; stroke: var(--border); stroke-width: 6; }
+  .ring-fill {
+    fill: none;
+    stroke: var(--green);
+    stroke-width: 6;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 8px rgba(0,255,136,0.5));
+    transition: stroke-dashoffset 1.5s ease;
+  }
+
+  /* ── SUBSCRIBE PANEL ── */
+  .subscribe-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 40px;
+    text-align: center;
+    margin-bottom: 48px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .subscribe-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(232,65,66,0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .sub-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+  }
+
+  .sub-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 32px;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .sub-price {
+    font-family: 'Orbitron', monospace;
+    font-size: 36px;
+    font-weight: 900;
+    color: var(--avax);
+    text-shadow: var(--glow-red);
+    margin-bottom: 4px;
+  }
+
+  .sub-period {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    margin-bottom: 32px;
+  }
+
+  .btn-subscribe {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 16px 40px;
+    background: var(--avax);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+    box-shadow: var(--glow-red);
+  }
+
+  .btn-subscribe:hover {
+    background: #ff5555;
+    box-shadow: 0 0 40px rgba(232,65,66,0.6);
+    transform: translateY(-2px);
+  }
+
+  .btn-subscribe:disabled {
+    background: var(--text-dim);
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .sub-features {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 28px;
+    flex-wrap: wrap;
+  }
+
+  .sub-feature {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .sub-feature::before {
+    content: '// ';
+    color: var(--avax);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 24px 0;
+    text-align: center;
+  }
+
+  .footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .footer-left {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .footer-avax {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .avax-dot {
+    width: 8px; height: 8px;
+    background: var(--avax);
+    border-radius: 50%;
+    box-shadow: var(--glow-red);
+  }
+
+  /* ── TICKER TAPE ── */
+  .ticker-tape {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    overflow: hidden;
+    white-space: nowrap;
+    margin-bottom: 48px;
+  }
+
+  .ticker-inner {
+    display: inline-flex;
+    gap: 48px;
+    animation: ticker 30s linear infinite;
+  }
+
+  @keyframes ticker {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .ticker-item {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+
+  .ticker-item .up   { color: var(--green); }
+  .ticker-item .down { color: var(--avax);  }
+
+  /* ── LOADING / STATUS ── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: var(--glow-cyan);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  /* ── NOTIFICATION ── */
+  .notification {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--bg3);
+    border: 1px solid var(--green);
+    padding: 16px 20px;
+    font-size: 12px;
+    color: var(--green);
+    box-shadow: var(--glow-green);
+    z-index: 999;
+    display: none;
+    animation: slideIn 0.3s ease;
+    max-width: 300px;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 700px) {
+    .signal-card { grid-template-columns: 30px 90px 1fr auto; gap: 12px; }
+    .score-bar-wrap { display: none; }
+    .accuracy-grid { grid-template-columns: 1fr; }
+    .sub-features { flex-direction: column; align-items: center; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div>
+          <div class="logo-text">Chain<span>Score</span></div>
+          <div class="logo-tag">On-Chain Signal Intelligence</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="market-badge">
+          <div class="market-dot" id="marketDot"></div>
+          <span id="marketStatus">CHECKING...</span>
+        </div>
+        <button class="btn-connect" id="connectBtn" onclick="connectWallet()">
+          Connect Wallet
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- TICKER TAPE -->
+<div class="ticker-tape">
+  <div class="ticker-inner" id="tickerInner">
+    <span class="ticker-item">BTC <span class="up">▲ 2.4%</span></span>
+    <span class="ticker-item">ETH <span class="up">▲ 1.8%</span></span>
+    <span class="ticker-item">AVAX <span class="up">▲ 3.1%</span></span>
+    <span class="ticker-item">SOL <span class="down">▼ 0.9%</span></span>
+    <span class="ticker-item">SNAP <span class="up">▲ 4.2%</span></span>
+    <span class="ticker-item">AMCX <span class="up">▲ 2.7%</span></span>
+    <span class="ticker-item">DOT <span class="up">▲ 1.1%</span></span>
+    <span class="ticker-item">ETC <span class="up">▲ 5.3%</span></span>
+    <span class="ticker-item">ARRY <span class="down">▼ 1.4%</span></span>
+    <span class="ticker-item">XRP <span class="up">▲ 0.8%</span></span>
+    <!-- Duplicate for seamless loop -->
+    <span class="ticker-item">BTC <span class="up">▲ 2.4%</span></span>
+    <span class="ticker-item">ETH <span class="up">▲ 1.8%</span></span>
+    <span class="ticker-item">AVAX <span class="up">▲ 3.1%</span></span>
+    <span class="ticker-item">SOL <span class="down">▼ 0.9%</span></span>
+    <span class="ticker-item">SNAP <span class="up">▲ 4.2%</span></span>
+    <span class="ticker-item">AMCX <span class="up">▲ 2.7%</span></span>
+    <span class="ticker-item">DOT <span class="up">▲ 1.1%</span></span>
+    <span class="ticker-item">ETC <span class="up">▲ 5.3%</span></span>
+    <span class="ticker-item">ARRY <span class="down">▼ 1.4%</span></span>
+    <span class="ticker-item">XRP <span class="up">▲ 0.8%</span></span>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main class="container">
+
+  <!-- HERO STATS -->
+  <div class="hero">
+    <div class="hero-title">Signal Intelligence Dashboard</div>
+    <div class="hero-sub">Powered by <span>Avalanche C-Chain</span> — Signals ranked, scored, and verified on-chain</div>
+  </div>
+
+  <div class="stats-row" id="statsRow">
+    <div class="stat-box">
+      <div class="stat-label">Total Signals</div>
+      <div class="stat-value cyan" id="statSignals">—</div>
+      <div class="stat-unit">published on-chain</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Accuracy Rate</div>
+      <div class="stat-value green" id="statAccuracy">—</div>
+      <div class="stat-unit">verified on-chain</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Signals Resolved</div>
+      <div class="stat-value" id="statResolved">—</div>
+      <div class="stat-unit">48hr outcomes tracked</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Daily Access</div>
+      <div class="stat-value red">0.1</div>
+      <div class="stat-unit">AVAX per day</div>
+    </div>
+  </div>
+
+  <!-- TOP 5 SIGNALS -->
+  <div class="section-header">
+    <div class="section-title">// Top Signals Today</div>
+    <div class="section-meta" id="signalMeta">Loading from chain...</div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="status-dot"></div>
+    <span id="statusText">Connecting to Avalanche...</span>
+  </div>
+
+  <div class="signals-grid" id="signalsGrid">
+    <!-- Populated by JS -->
+  </div>
+
+  <!-- ACCURACY -->
+  <div class="section-header">
+    <div class="section-title">// On-Chain Accuracy</div>
+    <div class="section-meta">Immutable track record</div>
+  </div>
+
+  <div class="accuracy-grid">
+    <div class="accuracy-panel">
+      <div class="acc-title">Win Rate — Verified On-Chain</div>
+      <div class="acc-big" id="accPct">—%</div>
+      <div class="acc-sub">
+        <span id="accCorrect">—</span> correct out of <span id="accTotal">—</span> resolved signals
+      </div>
+      <div style="margin-top:16px; font-size:10px; color:var(--text-dim); line-height:1.8; letter-spacing:1px;">
+        Every signal is timestamped on-chain at publish time. Outcomes are verified 48 hours later by live price data. No black boxes. No edits. Immutable record.
+      </div>
+    </div>
+    <div class="accuracy-panel ring-wrap">
+      <svg width="160" height="160" class="ring">
+        <circle class="ring-bg"   cx="80" cy="80" r="66"/>
+        <circle class="ring-fill" cx="80" cy="80" r="66"
+          id="ringFill"
+          stroke-dasharray="414.69"
+          stroke-dashoffset="414.69"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- SUBSCRIBE -->
+  <div class="subscribe-panel" id="subscribePanel">
+    <div class="sub-title">Access Full Signal Feed</div>
+    <div class="sub-desc">
+      Connect your wallet and pay 0.1 AVAX for daily access to ChainScore's full signal feed. Every transaction burns gas on Avalanche — supporting the network while you trade smarter.
+    </div>
+    <div class="sub-price">0.1 AVAX</div>
+    <div class="sub-period">per day — stacks automatically</div>
+    <button class="btn-subscribe" id="subscribeBtn" onclick="subscribe()" disabled>
+      Connect Wallet First
+    </button>
+    <div class="sub-features">
+      <span class="sub-feature">Full Top 5 Daily</span>
+      <span class="sub-feature">Live Crypto 24/7</span>
+      <span class="sub-feature">On-Chain Verified</span>
+      <span class="sub-feature">No Middleman</span>
+    </div>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-left">
+        ChainScore © 2026 — All signals verified on Avalanche C-Chain
+      </div>
+      <div class="footer-avax">
+        <div class="avax-dot"></div>
+        Powered by Avalanche
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- NOTIFICATION -->
+<div class="notification" id="notification"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG  — update contract address here
+// ─────────────────────────────────────────────
+const CONTRACT_ADDRESS = "0xC12795665710bCC9E99304a4464Febe2265b7E1d";
+const FUJI_CHAIN_ID    = "0xa869"; // 43113 in hex
+const DAILY_FEE        = "100000000000000000"; // 0.1 AVAX in wei
+
+const ABI = [
+  {"inputs":[],"name":"getPreviewSignals","outputs":[{"components":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"string","name":"ticker","type":"string"},{"internalType":"string","name":"pattern","type":"string"},{"internalType":"uint8","name":"score","type":"uint8"},{"internalType":"string","name":"confidence","type":"string"},{"internalType":"string","name":"trend","type":"string"},{"internalType":"uint256","name":"priceAtSignal","type":"uint256"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"bool","name":"resolved","type":"bool"},{"internalType":"bool","name":"wasCorrect","type":"bool"}],"internalType":"struct ChainScore.Signal[]","name":"","type":"tuple[]"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"count","type":"uint256"}],"name":"getLatestSignals","outputs":[{"components":[{"internalType":"uint256","name":"id","type":"uint256"},{"internalType":"string","name":"ticker","type":"string"},{"internalType":"string","name":"pattern","type":"string"},{"internalType":"uint8","name":"score","type":"uint8"},{"internalType":"string","name":"confidence","type":"string"},{"internalType":"string","name":"trend","type":"string"},{"internalType":"uint256","name":"priceAtSignal","type":"uint256"},{"internalType":"uint256","name":"timestamp","type":"uint256"},{"internalType":"bool","name":"resolved","type":"bool"},{"internalType":"bool","name":"wasCorrect","type":"bool"}],"internalType":"struct ChainScore.Signal[]","name":"","type":"tuple[]"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"getAccuracy","outputs":[{"internalType":"uint256","name":"correct","type":"uint256"},{"internalType":"uint256","name":"total","type":"uint256"},{"internalType":"uint256","name":"percentage","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"getStats","outputs":[{"internalType":"uint256","name":"totalSignals","type":"uint256"},{"internalType":"uint256","name":"resolvedSignals","type":"uint256"},{"internalType":"uint256","name":"accuracyPct","type":"uint256"},{"internalType":"uint256","name":"contractBalance","type":"uint256"},{"internalType":"uint256","name":"currentDailyFee","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"isSubscribed","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"daysRemaining","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"subscribe","outputs":[],"stateMutability":"payable","type":"function"}
+];
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+let provider, signer, contract, walletAddress;
+let isSubscribed = false;
+
+// ─────────────────────────────────────────────
+//  MARKET STATUS
+// ─────────────────────────────────────────────
+function checkMarketStatus() {
+  const now = new Date();
+  const est = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+  const day = est.getDay();
+  const h   = est.getHours();
+  const m   = est.getMinutes();
+  const mins = h * 60 + m;
+  const dot  = document.getElementById("marketDot");
+  const txt  = document.getElementById("marketStatus");
+
+  if (day === 0 || day === 6) {
+    dot.className = "market-dot closed";
+    txt.textContent = "WEEKEND";
+  } else if (mins >= 570 && mins <= 960) {
+    dot.className = "market-dot";
+    txt.textContent = "MARKET OPEN";
+  } else {
+    dot.className = "market-dot closed";
+    txt.textContent = "MARKET CLOSED";
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CONNECT WALLET
+// ─────────────────────────────────────────────
+async function connectWallet() {
+  if (!window.ethereum) {
+    showNotification("MetaMask not found. Please install it!", "error");
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({method: "eth_requestAccounts"});
+    walletAddress  = accounts[0];
+
+    // Check chain
+    const chainId = await window.ethereum.request({method: "eth_chainId"});
+    if (chainId !== FUJI_CHAIN_ID) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{chainId: FUJI_CHAIN_ID}]
+        });
+      } catch(e) {
+        // Add Fuji if not present
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: FUJI_CHAIN_ID,
+            chainName: "Avalanche Fuji Testnet",
+            nativeCurrency: {name: "AVAX", symbol: "AVAX", decimals: 18},
+            rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
+            blockExplorerUrls: ["https://testnet.snowtrace.io"]
+          }]
+        });
+      }
+    }
+
+    // Setup ethers
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer   = await provider.getSigner();
+    contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+    // Update UI
+    const short = walletAddress.slice(0,6) + "..." + walletAddress.slice(-4);
+    const btn   = document.getElementById("connectBtn");
+    btn.textContent = short;
+    btn.className   = "btn-connect connected";
+
+    showNotification("Wallet connected: " + short);
+
+    // Check subscription
+    await checkSubscription();
+    await loadChainData();
+
+    // Enable subscribe button
+    document.getElementById("subscribeBtn").disabled = false;
+    document.getElementById("subscribeBtn").textContent = isSubscribed
+      ? "Extend Access"
+      : "Subscribe — 0.1 AVAX / Day";
+
+  } catch(e) {
+    showNotification("Connection failed: " + e.message, "error");
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CHECK SUBSCRIPTION
+// ─────────────────────────────────────────────
+async function checkSubscription() {
+  if (!contract || !walletAddress) return;
+  try {
+    isSubscribed = await contract.isSubscribed(walletAddress);
+    const days   = await contract.daysRemaining(walletAddress);
+    if (isSubscribed) {
+      showNotification(`Access active — ${days} day(s) remaining`);
+    }
+    return isSubscribed;
+  } catch(e) {
+    console.error("Subscription check failed:", e);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  SUBSCRIBE
+// ─────────────────────────────────────────────
+async function subscribe() {
+  if (!contract) { showNotification("Connect your wallet first!"); return; }
+  try {
+    document.getElementById("subscribeBtn").textContent = "Confirming...";
+    document.getElementById("subscribeBtn").disabled = true;
+
+    const tx = await contract.subscribe({value: DAILY_FEE});
+    showNotification("Transaction submitted — waiting for confirmation...");
+    await tx.wait();
+
+    isSubscribed = true;
+    showNotification("Subscribed! 1 day access granted.");
+    document.getElementById("subscribeBtn").textContent = "Extend Access";
+    document.getElementById("subscribeBtn").disabled = false;
+
+    await loadChainData();
+  } catch(e) {
+    showNotification("Transaction failed: " + (e.reason || e.message), "error");
+    document.getElementById("subscribeBtn").disabled = false;
+    document.getElementById("subscribeBtn").textContent = "Subscribe — 0.1 AVAX / Day";
+  }
+}
+
+// ─────────────────────────────────────────────
+//  LOAD CHAIN DATA
+// ─────────────────────────────────────────────
+async function loadChainData() {
+  document.getElementById("statusText").textContent = "Reading from Avalanche...";
+
+  try {
+    // Read-only provider for public data (no wallet needed)
+    const readProvider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
+    const readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
+
+    // Get stats
+    const stats = await readContract.getStats();
+    document.getElementById("statSignals").textContent  = stats[0].toString();
+    document.getElementById("statResolved").textContent = stats[1].toString();
+    document.getElementById("statAccuracy").textContent = stats[2].toString() + "%";
+
+    // Get accuracy
+    const acc = await readContract.getAccuracy();
+    const pct = Number(acc[2]);
+    document.getElementById("accPct").textContent     = pct + "%";
+    document.getElementById("accCorrect").textContent = acc[0].toString();
+    document.getElementById("accTotal").textContent   = acc[1].toString();
+
+    // Animate ring
+    const circumference = 414.69;
+    const offset = circumference - (pct / 100) * circumference;
+    document.getElementById("ringFill").style.strokeDashoffset = offset;
+
+    // Load signals
+    let signals;
+    if (isSubscribed && contract) {
+      signals = await contract.getLatestSignals(5);
+    } else {
+      signals = await readContract.getPreviewSignals();
+    }
+
+    renderSignals(signals, isSubscribed);
+    document.getElementById("statusText").textContent = "Live — last updated " + new Date().toLocaleTimeString();
+    document.getElementById("signalMeta").textContent = isSubscribed
+      ? "Full access — " + signals.length + " signals"
+      : "Preview — subscribe for full access";
+
+  } catch(e) {
+    console.error("Chain read error:", e);
+    document.getElementById("statusText").textContent = "No signals published yet — check back during market hours";
+    renderEmptyState();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  RENDER SIGNALS
+// ─────────────────────────────────────────────
+function renderSignals(signals, subscribed) {
+  const grid = document.getElementById("signalsGrid");
+
+  if (!signals || signals.length === 0) {
+    renderEmptyState();
+    return;
+  }
+
+  // Sort by score descending
+  const sorted = [...signals].sort((a,b) => Number(b[3]) - Number(a[3]));
+
+  grid.innerHTML = sorted.map((s, i) => {
+    const ticker  = s[1];
+    const pattern = s[2];
+    const score   = Number(s[3]);
+    const conf    = s[4];
+    const trend   = s[5];
+    const price   = (Number(s[6]) / 100).toFixed(2);
+    const ts      = new Date(Number(s[7]) * 1000).toLocaleDateString();
+    const pct     = Math.min((score / 17) * 100, 100).toFixed(0);
+
+    const trendTag = `<span class="tag ${trend}">${trend.toUpperCase()}</span>`;
+    const volTag   = score >= 8 ? `<span class="tag volume">VOL SPIKE</span>` : '';
+    const rankClass = i === 0 ? "top" : "";
+
+    return `
+      <div class="signal-card">
+        <div class="signal-rank ${rankClass}">${i+1}</div>
+        <div class="signal-ticker">
+          ${ticker}
+          <div class="price">$${price} · ${ts}</div>
+        </div>
+        <div class="signal-details">
+          <div class="signal-pattern">${pattern}</div>
+          <div class="signal-tags">${trendTag}${volTag}<span class="tag uptrend">${conf}</span></div>
+        </div>
+        <div class="score-bar-wrap">
+          <div style="font-size:9px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;">Score</div>
+          <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="signal-score">
+          <div class="score-num">${score}</div>
+          <div class="score-label">${conf}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // If not subscribed and < 5 signals, add locked placeholders
+  if (!subscribed) {
+    const locked = 5 - sorted.length;
+    for (let i = 0; i < locked; i++) {
+      grid.innerHTML += `
+        <div class="signal-card locked">
+          <div class="signal-rank">${sorted.length + i + 1}</div>
+          <div class="signal-ticker">??????</div>
+          <div class="signal-details">
+            <div class="lock-msg">🔒 Subscribe to unlock this signal</div>
+          </div>
+          <div class="score-bar-wrap"></div>
+          <div class="signal-score">
+            <div class="score-num" style="color:var(--text-dim)">??</div>
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
+function renderEmptyState() {
+  document.getElementById("signalsGrid").innerHTML = `
+    <div style="padding:40px;text-align:center;border:1px solid var(--border);background:var(--bg2);">
+      <div style="font-family:'Orbitron',monospace;font-size:12px;color:var(--text-dim);letter-spacing:3px;margin-bottom:12px;">
+        NO SIGNALS YET
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.8;">
+        Signals are published during market hours (Mon-Fri 9:30am-4pm EST).<br>
+        Check back when markets open for today's top picks.
+      </div>
+    </div>
+  `;
+}
+
+// ─────────────────────────────────────────────
+//  NOTIFICATION
+// ─────────────────────────────────────────────
+function showNotification(msg, type) {
+  const el = document.getElementById("notification");
+  el.textContent = msg;
+  el.style.borderColor = type === "error" ? "var(--avax)" : "var(--green)";
+  el.style.color       = type === "error" ? "var(--avax)" : "var(--green)";
+  el.style.display     = "block";
+  setTimeout(() => { el.style.display = "none"; }, 4000);
+}
+
+// ─────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────
+checkMarketStatus();
+setInterval(checkMarketStatus, 60000);
+
+// Load public data immediately without wallet
+loadChainData();
+
+// Auto-refresh every 5 minutes
+setInterval(loadChainData, 5 * 60 * 1000);
+</script>
+
+<!-- Ethers.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+
+</body>
+</html>
