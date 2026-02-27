@@ -973,7 +973,7 @@ async function connectWallet() {
             chainId: FUJI_CHAIN_ID,
             chainName: "Avalanche Fuji Testnet",
             nativeCurrency: {name: "AVAX", symbol: "AVAX", decimals: 18},
-            rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
+            rpcUrls: ["https://api.avax.network/ext/bc/C/rpc"],
             blockExplorerUrls: ["https://testnet.snowtrace.io"]
           }]
         });
@@ -1060,7 +1060,7 @@ async function loadChainData() {
 
   try {
     // Read-only provider for public data (no wallet needed)
-    const readProvider = new ethers.JsonRpcProvider("https://api.avax-test.network/ext/bc/C/rpc");
+    const readProvider = new ethers.JsonRpcProvider("https://api.avax.network/ext/bc/C/rpc");
     const readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
 
     // Get stats
